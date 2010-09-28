@@ -614,9 +614,11 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 
 	case HIDIOCGVERSION:
+                printk("HIDIOCGVERSION\n");
 		return put_user(HID_VERSION, (int __user *)arg);
 
 	case HIDIOCAPPLICATION:
+                printk("HIDIOCAPPLICATION\n");
 		if (arg < 0 || arg >= hid->maxapplication)
 			return -EINVAL;
 
@@ -631,6 +633,7 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return hid->collection[i].usage;
 
 	case HIDIOCGDEVINFO:
+                printk("HIDIOCGDEVINFO\n");
 		dinfo.bustype = BUS_USB;
 		dinfo.busnum = dev->bus->busnum;
 		dinfo.devnum = dev->devnum;
@@ -645,12 +648,14 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 
 	case HIDIOCGFLAG:
+                printk("HIDIOCGFLAG\n");
 		if (put_user(list->flags, (int __user *)arg))
 			return -EFAULT;
 
 		return 0;
 
 	case HIDIOCSFLAG:
+                printk("HIDIOCSFLAG\n");
 		{
 			int newflags;
 			if (get_user(newflags, (int __user *)arg))
@@ -667,6 +672,7 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 
 	case HIDIOCGSTRING:
+                printk("HIDIOCGSTRING\n");
 		mutex_lock(&hiddev->existancelock);
 		if (hiddev->exist)
 			r = hiddev_ioctl_string(hiddev, cmd, user_arg);
@@ -676,6 +682,7 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return r;
 
 	case HIDIOCINITREPORT:
+                printk("HIDIOCINITREPORT\n");
 		mutex_lock(&hiddev->existancelock);
 		if (!hiddev->exist) {
 			mutex_unlock(&hiddev->existancelock);
@@ -687,6 +694,7 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 
 	case HIDIOCGREPORT:
+                printk("HIDIOCGREPORT\n");
 		if (copy_from_user(&rinfo, user_arg, sizeof(rinfo)))
 			return -EFAULT;
 
@@ -706,6 +714,7 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 
 	case HIDIOCSREPORT:
+                printk("HIDIOCSREPORT\n");
 		if (copy_from_user(&rinfo, user_arg, sizeof(rinfo)))
 			return -EFAULT;
 
@@ -725,6 +734,7 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 
 	case HIDIOCGREPORTINFO:
+                printk("HIDIOCGREPORTINFO\n");
 		if (copy_from_user(&rinfo, user_arg, sizeof(rinfo)))
 			return -EFAULT;
 
@@ -739,6 +749,7 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 
 	case HIDIOCGFIELDINFO:
+                printk("HIDIOCGFIELDINFO\n");
 		if (copy_from_user(&finfo, user_arg, sizeof(finfo)))
 			return -EFAULT;
 		rinfo.report_type = finfo.report_type;
@@ -778,6 +789,7 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case HIDIOCGUSAGES:
 	case HIDIOCSUSAGES:
 	case HIDIOCGCOLLECTIONINDEX:
+                printk("HIDIOCGCOLLECTIONINDEX or similar\n");
 		mutex_lock(&hiddev->existancelock);
 		if (hiddev->exist)
 			r = hiddev_ioctl_usage(hiddev, cmd, user_arg);
@@ -787,6 +799,7 @@ static long hiddev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return r;
 
 	case HIDIOCGCOLLECTIONINFO:
+                printk("HIDIOCGCOLLECTIONINFO\n");
 		if (copy_from_user(&cinfo, user_arg, sizeof(cinfo)))
 			return -EFAULT;
 
