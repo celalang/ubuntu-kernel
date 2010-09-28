@@ -1,3 +1,170 @@
+I'm running Ubuntu 10.04, Lucid Lynx, on my Macbook. The kernel version is
+Linux ubuntu 2.6.32-24-generic #43-Ubuntu SMP
+
+Here are web pages on kernel building:
+    https://help.ubuntu.com/community/Kernel/Compile
+    http://blog.avirtualhome.com/2010/05/05/how-to-compile-a-ubuntu-lucid-kernel/
+
+This involves a chroot variant called fakeroot:
+    http://manpages.ubuntu.com/manpages/lucid/man1/fakeroot-tcp.1.html
+
+Ubuntu likes to see kernels packaged up nicely:
+    http://www.howtoforge.com/roll_a_kernel_debian_ubuntu_way
+This takes care of some installation hassles including grub stuff.
+
+There's more info about kernel building here:
+    http://crashcourse.ca/introduction-linux-kernel-programming/intermission-building-new-ubuntu-1004-kernel-free-lesson
+including an opportunity to take a $40 on-line course on kernel building, which
+I probably ought to do one of these days.
+
+To start kernel hacking on Ubuntu, you need these packages installed:
+
+    sudo su -
+    apt-get install fakeroot build-essential kernel-package
+    apt-get install crash kexec-tools makedumpfile kernel-wedge
+    apt-get build-dep linux
+    apt-get install git-core libncurses5 libncurses5-dev
+    apt-get install libelf-dev asciidoc binutils-dev
+    exit
+
+For all those instructions to work you need to fetch the kernel via Git, not
+just pick up a bzipball of the kernel sources. So I did this initially:
+
+    git clone git://kernel.ubuntu.com/ubuntu/ubuntu-lucid.git
+
+This repository has an enormous amount of history, and when usinbg Gitk you
+need to restrict it to only recent commits like this:
+
+    alias gk="gitk --all --since=2010/9/1 &"
+
+I've followed all the instructions on the avirtualhome.com web page up to the
+section entitled "Compilation". I have two issues there. First, it doesn't
+indicate where you actually build the kernel. Second, it doesn't use
+"make-kpkg" which I know I'm supposed to do. The last thing I did on that page
+was a git commit. (I discovered the very useful command "git clean -xdf" in the
+process.)
+
+At this point I'm switching to the howtoforge.com web page, picking up where it
+says:
+
+    To build the kernel you'll invoke "make-kpkg", a script which automates and
+    replaces the sequence "make dep; make clean; make bzImage; make modules".
+    Take a few minutes and read over the manual page for make-kpkg.
+
+So here are some relevant man pages:
+
+    http://manpages.ubuntu.com/manpages/lucid/en/man1/make-kpkg.1.html
+    http://manpages.ubuntu.com/manpages/lucid/man1/fakeroot-tcp.1.html
+
+You might need to do "fakeroot debian/rules build" as a precaution to make sure
+fakeroot won't run into any trouble as you do a kernel build.
+
+======================================
+
+It looks like this is the correct way to build a kernel.
+
+    git checkout ....some version....
+    git reset --hard
+    git clean -xdf
+    fakeroot debian/rules clean
+    AUTOBUILD=1 NOEXTRAS=1 fakeroot debian/rules binary-wware
+
+Then if you want to make kernel modules, do this:
+
+    AUTOBUILD=1 NOEXTRAS=1 fakeroot make modules
+
+There is a make-kpkg man page at
+
+    http://manpages.ubuntu.com/manpages/lucid/man1/make-kpkg.1.html
+
+which recommends the command:
+
+    make-kpkg --rootcmd fakeroot kernel_image modules
+
+and I am inclined to precede this with git checkout, git reset, git clean,
+and fakeroot debian/rules clean.
+
+==================================================================
+
+Here's what I think I've learned about how the kernel handles reports and
+report IDs. When you either install a kernel driver or plug in a device, I
+believe there is a call to a "probe" function. For instance if the device is a
+Belkin something, you call belkin_probe in drivers/hid/hid-belkin.c. From that
+point, there is a call sequence for getting to where report stuff is captured.
+
+    belkin_probe
+        hid_parse
+            usbhid_parse
+                hid_parse_report
+                    hid_parser_main
+                        hid_add_field
+                            hid_register_report
+
+There are two data structures that relate to report IDs.
+
+One is a hash table called report_id_hash, referenced in hid_register_report,
+hid_device_release and hid_get_report in drivers/hid/hid-core.c, and in
+hiddev_lookup_report in drivers/hid/usbhid/hiddev.c, and appearing as a field
+of a struct in include/linux/hid.h, as shown below. It also appears in some
+device-specific files: drivers/hid/hid-mosart.c, drivers/hid/hid-ntrig.c.
+
+    struct hid_report_enum {
+            unsigned numbered;
+            struct list_head report_list;
+            struct hid_report *report_id_hash[256];
+    };
+
+    struct hid_report {
+            struct list_head list;
+            unsigned id;                                    /* id of this report */
+            unsigned type;                                  /* report type */
+            struct hid_field *field[HID_MAX_FIELDS];        /* fields of the report */
+            unsigned maxfield;                              /* maximum valid field index */
+            unsigned size;                                  /* size of the report (bits) */
+            struct hid_device *device;                      /* associated device */
+    };
+
+The other is a struct field appearing as "parser->global.report_id", referenced
+in hid_add_field and in hid_parser_global, both in drivers/hid/hid-core.c. The
+hid_parser_global function is what parses the report ID byte described by the
+descriptor report. The "parser" is a struct hid_parser and the "global" is a
+struct hid_global, and the hid_global is used only in drivers/hid/hid-core.c,
+in the functions hid_add_field, hid_parser_global, and hid_parser_local, all
+three of these functions being static so there is no direct access to
+hid_global elsewhere. The hid_global struct is the mechanism for pushing and
+popping report fields and controlling how they are scoped when parsing the
+report.
+
+There is a call to hid_add_field with argument HID_INPUT_REPORT (as distinct
+from HID_OUTPUT_REPORT and HID_FEATURE_REPORT) in hid_parser_main which would
+pertain to EP1IN goings-on. Pursuing that, I find HID_INPUT_REPORT referenced
+in hidinput_find_key, hidinput_connect, hid_irq_in, hiddev_hid_event, and
+hiddev_report_event. I believe the following call chain occurs when we get a
+keyboard event (and probably many other kinds of device-related events).
+
+    hid_irq_in
+        hid_input_report
+            hid_report_raw_event
+                hid_input_field
+                    hid_process_event
+                        hiddev_hid_event
+                            hiddev_send_event
+
+The report_id byte is used as an index into the report_id_hash table, which has
+room for 256 reports. There is a table for each device and type, see
+hid_register_report. The type is an unsigned int, the "device" is a pointer to
+a struct hid_device.
+
+A lot of this is done thru function pointers and it's not trivial via static
+analysis to figure out exactly where everything is going. For that reason I
+hope to put a lot of printk statements in the kernel, or better yet, run the
+kernel in GDB, but I don't know whether it's possible to run a kernel in GDB.
+
+*************************************************************************
+*************************************************************************
+*************************************************************************
+*************************************************************************
+
 	Linux kernel release 2.6.xx <http://kernel.org/>
 
 These are the release notes for Linux version 2.6.  Read them carefully,
